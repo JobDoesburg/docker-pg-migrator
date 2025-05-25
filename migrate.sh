@@ -41,12 +41,12 @@ echo "🆕 New Version: $NEW_VERSION"
 echo ""
 
 echo "📁 Initializing new data cluster..."
-sudo -u postgres $NEW_BIN/initdb -D "$NEW_DATA"
+$NEW_BIN/initdb -D "$NEW_DATA"
 echo "✅ Initialization complete"
 echo ""
 
 echo "🔎 Running pre-upgrade check..."
-sudo -u postgres "$NEW_BIN/pg_upgrade" \
+"$NEW_BIN/pg_upgrade" \
     --old-datadir="$OLD_DATA" \
     --new-datadir="$NEW_DATA" \
     --old-bindir="$OLD_BIN" \
@@ -56,7 +56,7 @@ echo "✅ Check passed"
 echo ""
 
 echo "🚀 Starting upgrade..."
-sudo -u postgres "$NEW_BIN/pg_upgrade" \
+"$NEW_BIN/pg_upgrade" \
     --old-datadir="$OLD_DATA" \
     --new-datadir="$NEW_DATA" \
     --old-bindir="$OLD_BIN" \
