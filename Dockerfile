@@ -24,9 +24,6 @@ RUN mkdir -p /var/lib/postgresql/old /var/lib/postgresql/new /upgrade && \
 COPY migrate.sh /upgrade/migrate.sh
 RUN chmod +x /upgrade/migrate.sh && chown postgres:postgres /upgrade/migrate.sh
 
-# Switch to postgres user
-USER postgres
-
 # Set working directory and default command
 WORKDIR /upgrade
 CMD ["/upgrade/migrate.sh"]

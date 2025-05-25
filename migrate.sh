@@ -9,6 +9,9 @@ NEW_DATA="/var/lib/postgresql/new"
 OLD_BIN="/usr/lib/postgresql/$OLD_VERSION/bin"
 NEW_BIN="/usr/lib/postgresql/$NEW_VERSION/bin"
 
+echo "🔧 Fixing ownership of mounted volumes..."
+chown -R postgres:postgres /var/lib/postgresql/old /var/lib/postgresql/new
+
 echo "🔍 Checking directories..."
 if [ ! -d "$OLD_DATA" ]; then
     echo "❌ Old PostgreSQL data directory not found at $OLD_DATA!"
@@ -47,7 +50,7 @@ echo "✅ Initialization complete"
 echo ""
 
 echo "🔎 Running pre-upgrade check..."
-$NEW_BIN/pg_upgrade \
+sudo -u postgres "$NEW_BIN/pg_upgrade" \
     --old-datadir="$OLD_DATA" \
     --new-datadir="$NEW_DATA" \
     --old-bindir="$OLD_BIN" \
@@ -57,7 +60,7 @@ echo "✅ Check passed"
 echo ""
 
 echo "🚀 Starting upgrade..."
-$NEW_BIN/pg_upgrade \
+sudo -u postgres "$NEW_BIN/pg_upgrade" \
     --old-datadir="$OLD_DATA" \
     --new-datadir="$NEW_DATA" \
     --old-bindir="$OLD_BIN" \
