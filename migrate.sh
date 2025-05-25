@@ -10,15 +10,24 @@ NEW_DATA="/var/lib/postgresql/new"
 OLD_BIN="/usr/lib/postgresql/$OLD_VERSION/bin"
 NEW_BIN="/usr/lib/postgresql/$NEW_VERSION/bin"
 
-# Create a 'postgres' user at runtime if not already present
+# Create a 'postgres' user with the target UID, if needed
 if ! getent passwd "$MIGRATION_UID" >/dev/null; then
     echo "🛠 Creating 'postgres' user with UID $MIGRATION_UID..."
-    groupadd -g "$MIGRATION_UID" postgres
-    useradd -u "$MIGRATION_UID" -g "$MIGRATION_UID" -d /var/lib/postgresql -s /bin/bash postgres
-    mkdir -p /var/lib/postgresql
-    chown -R "$MIGRATION_UID:$MIGRATION_UID" /var/lib/postgresql
-fi
 
+    # Check if 'postgres' group exists
+    if getent group postgres >/dev/null; then
+        POSTGRES_GID=$(getent group postgres | cut -d: -f3)
+    else
+        POSTGRES_GID="$MIGRATION_UID"
+        groupadd -g "$POSTGRES_GID" postgres
+    fi
+
+    useradd -u "$MIGRATION_UID" -g "$POSTGRES_GID" -d /var/lib/postgresql -s /bin/bash postgres
+    mkdir -p /var/lib/postgresql
+    chown -R "$MIGRATION_UID:$POSTGRES_GID" /var/lib/postgresql
+else
+    echo "✅ 'postgres' user with UID $MIGRATION_UID already exists"
+fi
 echo "✅ Running as UID $MIGRATION_UID"
 
 # Function to run commands as the created user
