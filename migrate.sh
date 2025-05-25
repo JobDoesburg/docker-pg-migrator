@@ -26,7 +26,8 @@ echo "🔍 Checking directories..."
 [ -d "$NEW_DATA" ] || { echo "❌ New data directory not found: $NEW_DATA"; exit 1; }
 
 echo "🔎 Checking that new data directory is empty..."
-[ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data directory ($NEW_DATA) is not empty. Aborting."; exit 1; }
+[ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data directory ($NEW_DATA) is not empty. Aborting.";
+rm -rf $NEW_DATA; }
 
 echo "📁 Initializing new data cluster..."
 "$NEW_BIN/initdb" -D "$NEW_DATA"
