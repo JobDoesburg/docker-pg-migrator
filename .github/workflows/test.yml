@@ -50,7 +50,7 @@ jobs:
           docker stop "$POSTGRES_CID"
           docker cp "$POSTGRES_CID":/var/lib/postgresql/data ./pgdata-old
 
-      - name: Sanity check postmaster.pid must be gone
+      - name: Sanity check: postmaster.pid must be gone
         run: |
           if [ -f ./pgdata-old/postmaster.pid ]; then
             echo "❌ postmaster.pid still present — upgrade will fail"
@@ -58,7 +58,7 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare new data directory
+      - name: Prepare new data directory and fix permissions
         run: |
           mkdir -p pgdata-new
           sudo chown -R 70:70 pgdata-old pgdata-new
@@ -75,9 +75,14 @@ jobs:
             -e NEW_PG_VERSION=16 \
             -e UID=70 \
             -e GID=70 \
-            pg-migrator-test
+            pg-migrator-test || (
+              echo "❌ Migration failed. Dumping logs:"
+              find pgdata-new/pg_upgrade_output.d -name pg_upgrade_server.log -exec cat {} +
+              exit 1
+            )
 
       - name: Verify migration succeeded (PG_VERSION = 16)
         run: |
+          echo "PG_VERSION content:"
           cat pgdata-new/PG_VERSION
           grep -q "^16" pgdata-new/PG_VERSION
