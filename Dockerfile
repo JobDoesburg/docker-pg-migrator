@@ -17,8 +17,7 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create postgres user and working directories
-RUN useradd -m postgres && \
-    mkdir -p /var/lib/postgresql/old /var/lib/postgresql/new /upgrade && \
+RUN mkdir -p /var/lib/postgresql/old /var/lib/postgresql/new /upgrade && \
     chown -R postgres:postgres /var/lib/postgresql /upgrade
 
 # Copy the migration script

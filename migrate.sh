@@ -20,7 +20,20 @@ if [ ! -d "$NEW_DATA" ]; then
     exit 1
 fi
 
-echo "✅ Directories OK"
+echo "🔎 Checking that new data directory is empty..."
+if [ "$(ls -A "$NEW_DATA")" ]; then
+    echo "❌ New data directory ($NEW_DATA) is not empty. Aborting for safety."
+    exit 1
+fi
+
+echo "🔍 Verifying old cluster version..."
+DETECTED_VERSION=$($OLD_BIN/pg_controldata "$OLD_DATA" | grep 'pg_control version number' || true)
+if [[ -z "$DETECTED_VERSION" ]]; then
+    echo "❌ Could not read pg_control data from old cluster. Is this a valid PostgreSQL $OLD_VERSION cluster?"
+    exit 1
+fi
+
+echo "✅ Old cluster seems valid"
 echo ""
 
 echo "📦 PostgreSQL Upgrade"
