@@ -57,7 +57,7 @@ jobs:
           sed -i '/lc_numeric/d' pgdata-old/postgresql.conf || true
           sed -i '/lc_time/d' pgdata-old/postgresql.conf || true
 
-      - name: Sanity check: postmaster.pid must be gone
+      - name: Ensure postmaster.pid is gone
         run: |
           if [ -f ./pgdata-old/postmaster.pid ]; then
             echo "❌ postmaster.pid still present"
