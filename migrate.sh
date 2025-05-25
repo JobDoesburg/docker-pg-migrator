@@ -9,22 +9,22 @@ NEW_DATA="/var/lib/postgresql/new"
 OLD_BIN="/usr/lib/postgresql/$OLD_VERSION/bin"
 NEW_BIN="/usr/lib/postgresql/$NEW_VERSION/bin"
 
-# Use UID/GID from environment if set, else detect
+# Use UID/GID from environment if set, else detect from current process
 CURRENT_UID=${UID:-$(id -u)}
 CURRENT_GID=${GID:-$(id -g)}
 USER_NAME=pguser
 
-# Ensure a valid passwd entry exists for the current UID
+# Ensure a passwd entry exists for the current UID (needed for initdb/pg_upgrade)
 if ! getent passwd "$CURRENT_UID" >/dev/null; then
     echo "🛠 No passwd entry for UID $CURRENT_UID. Creating $USER_NAME..."
-    echo "$USER_NAME:x:$CURRENT_UID:$CURRENT_GID:PostgreSQL:/var/lib/postgresql:/bin/bash" >> /etc/passwd
+    echo "$USER_NAME::${CURRENT_UID}:${CURRENT_GID}:PostgreSQL:/var/lib/postgresql:/bin/bash" >> /etc/passwd
 fi
 
 echo "✅ Running migration as UID=$CURRENT_UID (user $USER_NAME)"
 
-# Function to run commands as the specified UID
+# Function to run commands as the specified UID/GID using setpriv (no password or real login needed)
 as_migrator_user() {
-    setpriv --reuid=$CURRENT_UID --regid=$CURRENT_GID --init-groups bash -c "$*"
+    setpriv --reuid="$CURRENT_UID" --regid="$CURRENT_GID" --init-groups bash -c "$*"
 }
 
 echo "🔍 Checking directories..."
@@ -33,6 +33,9 @@ echo "🔍 Checking directories..."
 
 echo "🔎 Checking that new data directory is empty..."
 [ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data directory ($NEW_DATA) is not empty. Aborting."; exit 1; }
+
+echo "🔧 Fixing permissions on new data directory..."
+chown -R "$CURRENT_UID:$CURRENT_GID" "$NEW_DATA"
 
 echo "📁 Initializing new data cluster..."
 as_migrator_user "$NEW_BIN/initdb -D $NEW_DATA"
