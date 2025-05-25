@@ -32,7 +32,7 @@ jobs:
 
       - name: 🛠️ Build image for PostgreSQL ${{ matrix.old }} ➜ ${{ matrix.new }}
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/pg-migrator
+          IMAGE_NAME=ghcr.io/jobdoesburg/pg-migrator
           docker build \
             --build-arg OLD_PG_VERSION=${{ matrix.old }} \
             --build-arg NEW_PG_VERSION=${{ matrix.new }} \
@@ -40,5 +40,5 @@ jobs:
 
       - name: 📤 Push image
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/pg-migrator
+          IMAGE_NAME=ghcr.io/jobdoesburg/pg-migrator
           docker push $IMAGE_NAME:${{ matrix.old }}-to-${{ matrix.new }}
