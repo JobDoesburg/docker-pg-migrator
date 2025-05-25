@@ -37,12 +37,17 @@ echo "🔎 Checking that new data directory is empty..."
 echo "🔧 Fixing permissions on new data directory..."
 chown -R "$CURRENT_UID:$CURRENT_GID" "$NEW_DATA"
 
+# Prepare a working directory for pg_upgrade
+TMP_WORKDIR="/tmp/pg_upgrade_work"
+mkdir -p "$TMP_WORKDIR"
+chown "$CURRENT_UID:$CURRENT_GID" "$TMP_WORKDIR"
+
 echo "📁 Initializing new data cluster..."
 as_migrator_user "$NEW_BIN/initdb -D $NEW_DATA"
 echo "✅ Initialization complete"
 
 echo "🔎 Running pre-upgrade check..."
-as_migrator_user "$NEW_BIN/pg_upgrade \
+as_migrator_user "cd $TMP_WORKDIR && $NEW_BIN/pg_upgrade \
     --old-datadir=$OLD_DATA \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
@@ -51,7 +56,7 @@ as_migrator_user "$NEW_BIN/pg_upgrade \
 echo "✅ Check passed"
 
 echo "🚀 Starting upgrade..."
-as_migrator_user "$NEW_BIN/pg_upgrade \
+as_migrator_user "cd $TMP_WORKDIR && $NEW_BIN/pg_upgrade \
     --old-datadir=$OLD_DATA \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
