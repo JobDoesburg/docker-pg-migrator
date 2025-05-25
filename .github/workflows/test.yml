@@ -77,7 +77,7 @@ jobs:
       - name: Run migration
         run: |
           docker run --rm \
-            -v $PWD/pgdata-old:/var/lib/postgresql/old:ro \
+            -v $PWD/pgdata-old:/var/lib/postgresql/old:rw \
             -v $PWD/pgdata-new:/var/lib/postgresql/new:rw \
             -e OLD_PG_VERSION=13 \
             -e NEW_PG_VERSION=16 \
