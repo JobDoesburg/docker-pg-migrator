@@ -20,9 +20,34 @@ if [ ! -d "$NEW_DATA" ]; then
     exit 1
 fi
 
+echo "🔍 Checking ownership of old data directory..."
+
+PG_VERSION_FILE="$OLD_DATA/PG_VERSION"
+if [ ! -f "$PG_VERSION_FILE" ]; then
+    echo "❌ PG_VERSION file not found in old data directory. Is this a valid cluster?"
+    exit 1
+fi
+
+FILE_UID=$(stat -c "%u" "$PG_VERSION_FILE")
+CURRENT_UID=$(id -u)
+
+if [ "$CURRENT_UID" -ne "$FILE_UID" ]; then
+    echo "❌ Current user (UID $CURRENT_UID) does not match owner of PG_VERSION (UID $FILE_UID)"
+    echo "💡 To fix this, run the container as UID $FILE_UID:"
+    echo ""
+    echo "    user: \"$FILE_UID:$FILE_UID\""
+    echo ""
+    echo "🛑 Aborting to avoid permission errors."
+    exit 1
+fi
+
+echo "✅ UID check passed (running as correct user: $CURRENT_UID)"
+echo ""
+
 echo "🔎 Checking that new data directory is empty..."
 if [ "$(ls -A "$NEW_DATA")" ]; then
     echo "❌ New data directory ($NEW_DATA) is not empty. Aborting for safety."
+    exit 1
 fi
 
 echo "🔍 Verifying old cluster version..."
