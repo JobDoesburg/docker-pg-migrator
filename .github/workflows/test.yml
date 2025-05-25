@@ -47,7 +47,7 @@ jobs:
       - name: Stop PostgreSQL and copy data directory
         run: |
           POSTGRES_CID=$(docker ps -qf ancestor=postgres:13)
-          docker exec "$POSTGRES_CID" su - postgres -c "pg_ctl -D /var/lib/postgresql/data -m fast stop"
+          docker stop "$POSTGRES_CID"
           docker cp "$POSTGRES_CID":/var/lib/postgresql/data ./pgdata-old
 
       - name: Sanity check postmaster.pid must be gone
