@@ -50,7 +50,7 @@ jobs:
           docker stop "$POSTGRES_CID"
           docker cp "$POSTGRES_CID":/var/lib/postgresql/data ./pgdata-old
 
-      - name: Sanity check: postmaster.pid must be gone
+      - name: Sanity check postmaster.pid must be gone
         run: |
           if [ -f ./pgdata-old/postmaster.pid ]; then
             echo "❌ postmaster.pid still present — upgrade will fail"
