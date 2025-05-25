@@ -1,0 +1,44 @@
+name: 📦 Publish PostgreSQL Migration Images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          - old: 13
+            new: 16
+
+    steps:
+      - name: 🔄 Checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🔐 Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🛠️ Build image for PostgreSQL ${{ matrix.old }} ➜ ${{ matrix.new }}
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/pg-migrator
+          docker build \
+            --build-arg OLD_PG_VERSION=${{ matrix.old }} \
+            --build-arg NEW_PG_VERSION=${{ matrix.new }} \
+            -t $IMAGE_NAME:${{ matrix.old }}-to-${{ matrix.new }} .
+
+      - name: 📤 Push image
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/pg-migrator
+          docker push $IMAGE_NAME:${{ matrix.old }}-to-${{ matrix.new }}
