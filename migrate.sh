@@ -24,7 +24,7 @@ echo "✅ Running migration as UID=$CURRENT_UID (user $USER_NAME)"
 
 # Function to run commands as the specified UID
 as_migrator_user() {
-    su "$USER_NAME" -c "$*"
+    setpriv --reuid=$CURRENT_UID --regid=$CURRENT_GID --init-groups bash -c "$*"
 }
 
 echo "🔍 Checking directories..."

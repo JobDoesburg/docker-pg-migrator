@@ -8,7 +8,7 @@ ENV NEW_PG_VERSION=$NEW_PG_VERSION
 
 # Install tools and PostgreSQL versions
 RUN apt-get update && \
-    apt-get install -y wget gnupg2 lsb-release && \
+    apt-get install -y wget gnupg2 lsb-release util-linux && \
     echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list && \
     wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - && \
