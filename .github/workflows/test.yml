@@ -1,0 +1,73 @@
+name: Test PostgreSQL Migrator
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-migration:
+    runs-on: ubuntu-latest
+    services:
+      postgres13:
+        image: postgres:13
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build migrator image
+        run: |
+          docker build -t pg-migrator-test .
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          for i in {1..10}; do
+            if docker exec $(docker ps -qf ancestor=postgres:13) pg_isready -U testuser; then break; fi
+            sleep 3
+          done
+
+      - name: Dump initial database
+        run: |
+          docker exec $(docker ps -qf ancestor=postgres:13) \
+            psql -U testuser -d testdb -c "CREATE TABLE example(id SERIAL PRIMARY KEY, name TEXT); INSERT INTO example(name) VALUES ('hello'), ('world');"
+
+      - name: Stop and extract volume
+        run: |
+          docker cp $(docker ps -qf ancestor=postgres:13):/var/lib/postgresql/data ./pgdata-old
+
+      - name: Prepare new volume dir
+        run: |
+          mkdir -p pgdata-new
+          sudo chown -R 70:70 pgdata-old pgdata-new
+
+      - name: Run migration container
+        run: |
+          docker run --rm \
+            -v $PWD/pgdata-old:/var/lib/postgresql/old:ro \
+            -v $PWD/pgdata-new:/var/lib/postgresql/new:rw \
+            -e OLD_PG_VERSION=13 \
+            -e NEW_PG_VERSION=16 \
+            -e UID=70 \
+            -e GID=70 \
+            pg-migrator-test
+
+      - name: Verify new data directory contains PG_VERSION = 16
+        run: |
+          cat pgdata-new/PG_VERSION
+          grep -q "^16" pgdata-new/PG_VERSION
