@@ -23,7 +23,6 @@ fi
 echo "🔎 Checking that new data directory is empty..."
 if [ "$(ls -A "$NEW_DATA")" ]; then
     echo "❌ New data directory ($NEW_DATA) is not empty. Aborting for safety."
-    rm -rf "$NEW_DATA"/*
 fi
 
 echo "🔍 Verifying old cluster version..."
@@ -42,7 +41,7 @@ echo "🆕 New Version: $NEW_VERSION"
 echo ""
 
 echo "📁 Initializing new data cluster..."
-$NEW_BIN/initdb -D "$NEW_DATA"
+sudo -u postgres $NEW_BIN/initdb -D "$NEW_DATA"
 echo "✅ Initialization complete"
 echo ""
 
