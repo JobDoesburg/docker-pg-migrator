@@ -44,6 +44,11 @@ echo "📁 Initializing new data cluster..."
 as_migrator_user "$NEW_BIN/initdb -D $NEW_DATA"
 echo "✅ Initialization complete"
 
+echo "👤 Creating user '$PGUSER_NAME' in new cluster..."
+as_migrator_user "$NEW_BIN/pg_ctl -D $NEW_DATA -o '-c listen_addresses=' -w start"
+as_migrator_user "$NEW_BIN/psql -d postgres -c \"CREATE USER \\\"$PGUSER_NAME\\\";\""
+as_migrator_user "$NEW_BIN/pg_ctl -D $NEW_DATA -m fast stop"
+
 # Remove stale postmaster.pid
 if [ -f "$OLD_DATA/postmaster.pid" ]; then
     echo "🧹 Removing stale postmaster.pid from $OLD_DATA"
