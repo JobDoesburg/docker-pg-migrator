@@ -3,71 +3,56 @@ set -euo pipefail
 
 OLD_VERSION=${OLD_PG_VERSION:-13}
 NEW_VERSION=${NEW_PG_VERSION:-16}
-MIGRATION_UID=${MIGRATION_UID:-70}
 
 OLD_DATA="/var/lib/postgresql/old"
 NEW_DATA="/var/lib/postgresql/new"
 OLD_BIN="/usr/lib/postgresql/$OLD_VERSION/bin"
 NEW_BIN="/usr/lib/postgresql/$NEW_VERSION/bin"
 
-# Create a 'postgres' user with the target UID, if needed
-if ! getent passwd "$MIGRATION_UID" >/dev/null; then
-    echo "🛠 Creating 'postgres' user with UID $MIGRATION_UID..."
+# Use UID/GID from environment if set, else detect
+CURRENT_UID=${UID:-$(id -u)}
+CURRENT_GID=${GID:-$(id -g)}
 
-    # Check if 'postgres' group exists
-    if getent group postgres >/dev/null; then
-        POSTGRES_GID=$(getent group postgres | cut -d: -f3)
-    else
-        POSTGRES_GID="$MIGRATION_UID"
-        groupadd -g "$POSTGRES_GID" postgres
-    fi
-
-    useradd -u "$MIGRATION_UID" -g "$POSTGRES_GID" -d /var/lib/postgresql -s /bin/bash postgres
-    mkdir -p /var/lib/postgresql
-    chown -R "$MIGRATION_UID:$POSTGRES_GID" /var/lib/postgresql
-else
-    echo "✅ 'postgres' user with UID $MIGRATION_UID already exists"
+# Ensure a valid passwd entry exists for the current UID (required by initdb/pg_upgrade)
+if ! getent passwd "$CURRENT_UID" >/dev/null; then
+    echo "🛠 No passwd entry for UID $CURRENT_UID. Adding entry to /etc/passwd..."
+    echo "postgres:x:$CURRENT_UID:$CURRENT_GID:PostgreSQL:/var/lib/postgresql:/bin/bash" >> /etc/passwd
 fi
-echo "✅ Running as UID $MIGRATION_UID"
 
-# Function to run commands as the created user
-as_postgres() {
-    su postgres -c "$*"
-}
+echo "✅ Using UID=$CURRENT_UID and GID=$CURRENT_GID"
 
 echo "🔍 Checking directories..."
-[ -d "$OLD_DATA" ] || { echo "❌ Missing $OLD_DATA"; exit 1; }
-[ -d "$NEW_DATA" ] || { echo "❌ Missing $NEW_DATA"; exit 1; }
+[ -d "$OLD_DATA" ] || { echo "❌ Old data directory not found: $OLD_DATA"; exit 1; }
+[ -d "$NEW_DATA" ] || { echo "❌ New data directory not found: $NEW_DATA"; exit 1; }
 
 echo "🔎 Checking that new data directory is empty..."
-[ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ $NEW_DATA is not empty."; exit 1; }
-
-PG_VERSION_FILE="$OLD_DATA/PG_VERSION"
-[ -f "$PG_VERSION_FILE" ] || { echo "❌ Missing $PG_VERSION_FILE"; exit 1; }
+[ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data directory ($NEW_DATA) is not empty. Aborting."; exit 1; }
 
 echo "📁 Initializing new data cluster..."
-as_postgres "$NEW_BIN/initdb -D $NEW_DATA"
+"$NEW_BIN/initdb" -D "$NEW_DATA"
 echo "✅ Initialization complete"
 
 echo "🔎 Running pre-upgrade check..."
-as_postgres "$NEW_BIN/pg_upgrade \
-    --old-datadir=$OLD_DATA \
-    --new-datadir=$NEW_DATA \
-    --old-bindir=$OLD_BIN \
-    --new-bindir=$NEW_BIN \
-    --check"
-
+"$NEW_BIN/pg_upgrade" \
+    --old-datadir="$OLD_DATA" \
+    --new-datadir="$NEW_DATA" \
+    --old-bindir="$OLD_BIN" \
+    --new-bindir="$NEW_BIN" \
+    --check
 echo "✅ Check passed"
 
 echo "🚀 Starting upgrade..."
-as_postgres "$NEW_BIN/pg_upgrade \
-    --old-datadir=$OLD_DATA \
-    --new-datadir=$NEW_DATA \
-    --old-bindir=$OLD_BIN \
-    --new-bindir=$NEW_BIN \
+"$NEW_BIN/pg_upgrade" \
+    --old-datadir="$OLD_DATA" \
+    --new-datadir="$NEW_DATA" \
+    --old-bindir="$OLD_BIN" \
+    --new-bindir="$NEW_BIN" \
     --jobs=2 \
     --verbose \
     --copy \
-    --write-planner-stats"
+    --write-planner-stats
+echo ""
 
 echo "🎉 Migration complete!"
+echo "📌 New PostgreSQL $NEW_VERSION data is ready at $NEW_DATA"
+echo "🛑 Old data at $OLD_DATA remains untouched (read-only mount)"
