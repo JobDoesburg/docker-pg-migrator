@@ -12,46 +12,51 @@ NEW_BIN="/usr/lib/postgresql/$NEW_VERSION/bin"
 # Use UID/GID from environment if set, else detect
 CURRENT_UID=${UID:-$(id -u)}
 CURRENT_GID=${GID:-$(id -g)}
+USER_NAME=pguser
 
-# Ensure a valid passwd entry exists for the current UID (required by initdb/pg_upgrade)
+# Ensure a valid passwd entry exists for the current UID
 if ! getent passwd "$CURRENT_UID" >/dev/null; then
-    echo "🛠 No passwd entry for UID $CURRENT_UID. Adding entry to /etc/passwd..."
-    echo "postgres:x:$CURRENT_UID:$CURRENT_GID:PostgreSQL:/var/lib/postgresql:/bin/bash" >> /etc/passwd
+    echo "🛠 No passwd entry for UID $CURRENT_UID. Creating $USER_NAME..."
+    echo "$USER_NAME:x:$CURRENT_UID:$CURRENT_GID:PostgreSQL:/var/lib/postgresql:/bin/bash" >> /etc/passwd
 fi
 
-echo "✅ Using UID=$CURRENT_UID and GID=$CURRENT_GID"
+echo "✅ Running migration as UID=$CURRENT_UID (user $USER_NAME)"
+
+# Function to run commands as the specified UID
+as_migrator_user() {
+    su "$USER_NAME" -c "$*"
+}
 
 echo "🔍 Checking directories..."
 [ -d "$OLD_DATA" ] || { echo "❌ Old data directory not found: $OLD_DATA"; exit 1; }
 [ -d "$NEW_DATA" ] || { echo "❌ New data directory not found: $NEW_DATA"; exit 1; }
 
 echo "🔎 Checking that new data directory is empty..."
-[ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data directory ($NEW_DATA) is not empty. Aborting.";
-rm -rf $NEW_DATA; }
+[ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data directory ($NEW_DATA) is not empty. Aborting."; exit 1; }
 
 echo "📁 Initializing new data cluster..."
-"$NEW_BIN/initdb" -D "$NEW_DATA"
+as_migrator_user "$NEW_BIN/initdb -D $NEW_DATA"
 echo "✅ Initialization complete"
 
 echo "🔎 Running pre-upgrade check..."
-"$NEW_BIN/pg_upgrade" \
-    --old-datadir="$OLD_DATA" \
-    --new-datadir="$NEW_DATA" \
-    --old-bindir="$OLD_BIN" \
-    --new-bindir="$NEW_BIN" \
-    --check
+as_migrator_user "$NEW_BIN/pg_upgrade \
+    --old-datadir=$OLD_DATA \
+    --new-datadir=$NEW_DATA \
+    --old-bindir=$OLD_BIN \
+    --new-bindir=$NEW_BIN \
+    --check"
 echo "✅ Check passed"
 
 echo "🚀 Starting upgrade..."
-"$NEW_BIN/pg_upgrade" \
-    --old-datadir="$OLD_DATA" \
-    --new-datadir="$NEW_DATA" \
-    --old-bindir="$OLD_BIN" \
-    --new-bindir="$NEW_BIN" \
+as_migrator_user "$NEW_BIN/pg_upgrade \
+    --old-datadir=$OLD_DATA \
+    --new-datadir=$NEW_DATA \
+    --old-bindir=$OLD_BIN \
+    --new-bindir=$NEW_BIN \
     --jobs=2 \
     --verbose \
     --copy \
-    --write-planner-stats
+    --write-planner-stats"
 echo ""
 
 echo "🎉 Migration complete!"
