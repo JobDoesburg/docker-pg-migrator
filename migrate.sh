@@ -3,6 +3,7 @@ set -euo pipefail
 
 OLD_VERSION=${OLD_PG_VERSION:-13}
 NEW_VERSION=${NEW_PG_VERSION:-16}
+PGUSER_NAME=${PGUSER_NAME:-testuser}
 
 OLD_DATA="/var/lib/postgresql/old"
 NEW_DATA="/var/lib/postgresql/new"
@@ -49,12 +50,21 @@ if [ -f "$OLD_DATA/postmaster.pid" ]; then
     rm -f "$OLD_DATA/postmaster.pid"
 fi
 
+# Optional: Patch locale settings
+echo "🩹 Checking and patching unsupported locales in postgresql.conf..."
+CONF_FILE="$OLD_DATA/postgresql.conf"
+sed -i '/lc_messages/d' "$CONF_FILE" || true
+sed -i '/lc_monetary/d' "$CONF_FILE" || true
+sed -i '/lc_numeric/d' "$CONF_FILE" || true
+sed -i '/lc_time/d' "$CONF_FILE" || true
+
 echo "🔎 Running pre-upgrade check..."
 if ! as_migrator_user "cd $TMP_WORKDIR && $NEW_BIN/pg_upgrade \
     --old-datadir=$OLD_DATA \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
+    --username=$PGUSER_NAME \
     --check"; then
     echo "❌ Pre-upgrade check failed"
     find "$NEW_DATA/pg_upgrade_output.d" -name pg_upgrade_server.log -exec cat {} + || true
@@ -70,6 +80,7 @@ if ! as_migrator_user "cd $TMP_WORKDIR && $NEW_BIN/pg_upgrade \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
+    --username=$PGUSER_NAME \
     --jobs=2 \
     --verbose \
     --copy \

@@ -52,13 +52,12 @@ jobs:
 
       - name: Strip unsupported locales from postgresql.conf
         run: |
-          echo "🔧 Removing locale settings from postgresql.conf"
           sed -i '/lc_messages/d' pgdata-old/postgresql.conf || true
           sed -i '/lc_monetary/d' pgdata-old/postgresql.conf || true
           sed -i '/lc_numeric/d' pgdata-old/postgresql.conf || true
           sed -i '/lc_time/d' pgdata-old/postgresql.conf || true
 
-      - name: Ensure postmaster.pid must be gone
+      - name: Sanity check: postmaster.pid must be gone
         run: |
           if [ -f ./pgdata-old/postmaster.pid ]; then
             echo "❌ postmaster.pid still present"
@@ -83,6 +82,7 @@ jobs:
             -e NEW_PG_VERSION=16 \
             -e UID=70 \
             -e GID=70 \
+            -e PGUSER_NAME=testuser \
             pg-migrator-test || (
               echo "❌ Migration failed. Dumping logs:"
               sudo find pgdata-new/pg_upgrade_output.d -name pg_upgrade_server.log -exec cat {} +
