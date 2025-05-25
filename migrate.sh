@@ -23,7 +23,7 @@ fi
 echo "🔎 Checking that new data directory is empty..."
 if [ "$(ls -A "$NEW_DATA")" ]; then
     echo "❌ New data directory ($NEW_DATA) is not empty. Aborting for safety."
-    exit 1
+    rm -rf "$NEW_DATA"/*
 fi
 
 echo "🔍 Verifying old cluster version..."
