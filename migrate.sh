@@ -39,9 +39,21 @@ echo "🔧 Setting permissions and initializing new cluster..."
 chown -R "$CURRENT_UID:$CURRENT_GID" "$NEW_DATA"
 run_as_user "$NEW_BIN/initdb -D $NEW_DATA"
 
-# Clean stale pid file
-echo "🧹 Cleaning stale pid file..."
+# Clean stale pid file and ensure clean shutdown
+echo "🧹 Ensuring old cluster is properly shut down..."
 rm -f "$OLD_DATA/postmaster.pid"
+
+# Try to start and cleanly shut down the old cluster to ensure it's in a clean state
+echo "🔄 Performing clean shutdown of old cluster..."
+if run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -o '-p 50431 -k /tmp' -w start" 2>/dev/null; then
+    echo "✅ Old cluster started, performing clean shutdown..."
+    run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -m smart stop"
+else
+    echo "ℹ️ Old cluster was already stopped"
+fi
+
+# Ensure no stale processes or files remain
+rm -f "$OLD_DATA/postmaster.pid" "$NEW_DATA/postmaster.pid" 2>/dev/null || true
 
 # Use the provided superuser for migration
 echo "🔍 Using database superuser: $POSTGRES_USER"
