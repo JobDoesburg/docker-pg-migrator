@@ -23,8 +23,7 @@ run_as_user() {
 
 # Basic validation
 [ -d "$OLD_DATA" ] || { echo "❌ Old data not found: $OLD_DATA"; exit 1; }
-[ -d "$NEW_DATA" ] && [ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data dir must exist and be empty";
- rm -rf "$NEW_DATA"; }
+[ -d "$NEW_DATA" ] && [ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data dir must exist and be empty"; exit 1; }
 
 # Set permissions and initialize
 echo "🔧 Setting permissions and initializing new cluster..."
@@ -35,6 +34,20 @@ run_as_user "$NEW_BIN/initdb -D $NEW_DATA"
 echo "🧹 Cleaning stale pid file..."
 rm -f "$OLD_DATA/postmaster.pid"
 
+# Detect existing superuser from old cluster
+echo "🔍 Detecting existing superuser..."
+run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -o '-p 50431' -w start"
+EXISTING_USER=$(run_as_user "$OLD_BIN/psql -p 50431 -d postgres -t -c \"SELECT rolname FROM pg_roles WHERE rolsuper = true LIMIT 1;\"" | xargs)
+run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -m fast stop"
+
+echo "👤 Found existing superuser: $EXISTING_USER"
+
+# Create the same user in new cluster if it doesn't exist
+echo "👤 Ensuring user '$EXISTING_USER' exists in new cluster..."
+run_as_user "$NEW_BIN/pg_ctl -D $NEW_DATA -o '-p 50432' -w start"
+run_as_user "$NEW_BIN/psql -p 50432 -d postgres -c \"CREATE USER \\\"$EXISTING_USER\\\" WITH SUPERUSER;\" 2>/dev/null || true"
+run_as_user "$NEW_BIN/pg_ctl -D $NEW_DATA -m fast stop"
+
 # Run pre-upgrade check
 echo "🔎 Running pre-upgrade check..."
 cd /tmp
@@ -43,6 +56,7 @@ if ! run_as_user "$NEW_BIN/pg_upgrade \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
+    --username=\"$EXISTING_USER\" \
     --check"; then
     echo "❌ Pre-upgrade check failed"
     exit 1
@@ -57,6 +71,7 @@ if ! run_as_user "$NEW_BIN/pg_upgrade \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
+    --username=\"$EXISTING_USER\" \
     --copy"; then
     echo "❌ Upgrade failed"
     exit 1
