@@ -3,8 +3,6 @@ set -euo pipefail
 
 OLD_VERSION=${OLD_PG_VERSION:-13}
 NEW_VERSION=${NEW_PG_VERSION:-16}
-PGUSER_NAME=${PGUSER_NAME:-testuser}
-
 OLD_DATA="/var/lib/postgresql/old"
 NEW_DATA="/var/lib/postgresql/new"
 OLD_BIN="/usr/lib/postgresql/$OLD_VERSION/bin"
@@ -12,93 +10,55 @@ NEW_BIN="/usr/lib/postgresql/$NEW_VERSION/bin"
 
 CURRENT_UID=${UID:-$(id -u)}
 CURRENT_GID=${GID:-$(id -g)}
-USER_NAME=pguser
 
-# Add passwd entry if UID not defined
+# Ensure user exists for the UID
 if ! getent passwd "$CURRENT_UID" >/dev/null; then
-    echo "🛠 No passwd entry for UID $CURRENT_UID. Creating $USER_NAME..."
-    echo "$USER_NAME::${CURRENT_UID}:${CURRENT_GID}:PostgreSQL:/var/lib/postgresql:/bin/bash" >> /etc/passwd
+    echo "🛠 Creating user entry for UID $CURRENT_UID..."
+    echo "pguser::${CURRENT_UID}:${CURRENT_GID}:PostgreSQL:/var/lib/postgresql:/bin/bash" >> /etc/passwd
 fi
 
-echo "✅ Running migration as UID=$CURRENT_UID (user $USER_NAME)"
-
-as_migrator_user() {
+run_as_user() {
     setpriv --reuid="$CURRENT_UID" --regid="$CURRENT_GID" --init-groups bash -c "$*"
 }
 
-echo "🔍 Checking directories..."
-[ -d "$OLD_DATA" ] || { echo "❌ Old data directory not found: $OLD_DATA"; exit 1; }
-[ -d "$NEW_DATA" ] || { echo "❌ New data directory not found: $NEW_DATA"; exit 1; }
+# Basic validation
+[ -d "$OLD_DATA" ] || { echo "❌ Old data not found: $OLD_DATA"; exit 1; }
+[ -d "$NEW_DATA" ] && [ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data dir must exist and be empty"; exit 1; }
 
-echo "🔎 Checking that new data directory is empty..."
-[ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data directory ($NEW_DATA) is not empty. Aborting."; exit 1; }
-
-echo "🔧 Fixing permissions on new data directory..."
+# Set permissions and initialize
+echo "🔧 Setting permissions and initializing new cluster..."
 chown -R "$CURRENT_UID:$CURRENT_GID" "$NEW_DATA"
+run_as_user "$NEW_BIN/initdb -D $NEW_DATA"
 
-TMP_WORKDIR="/tmp/pg_upgrade_work"
-mkdir -p "$TMP_WORKDIR"
-chown "$CURRENT_UID:$CURRENT_GID" "$TMP_WORKDIR"
+# Clean stale pid file
+echo "🧹 Cleaning stale pid file..."
+rm -f "$OLD_DATA/postmaster.pid"
 
-echo "📁 Initializing new data cluster..."
-as_migrator_user "$NEW_BIN/initdb -D $NEW_DATA"
-echo "✅ Initialization complete"
-
-echo "👤 Creating user '$PGUSER_NAME' in new cluster..."
-as_migrator_user "$NEW_BIN/pg_ctl -D $NEW_DATA -o '-c listen_addresses=' -w start"
-as_migrator_user "$NEW_BIN/psql -d postgres -c \"CREATE USER \\\"$PGUSER_NAME\\\";\""
-as_migrator_user "$NEW_BIN/pg_ctl -D $NEW_DATA -m fast stop"
-
-# Remove stale postmaster.pid
-if [ -f "$OLD_DATA/postmaster.pid" ]; then
-    echo "🧹 Removing stale postmaster.pid from $OLD_DATA"
-    rm -f "$OLD_DATA/postmaster.pid"
-fi
-
-# Optional: Patch locale settings
-echo "🩹 Checking and patching unsupported locales in postgresql.conf..."
-CONF_FILE="$OLD_DATA/postgresql.conf"
-sed -i '/lc_messages/d' "$CONF_FILE" || true
-sed -i '/lc_monetary/d' "$CONF_FILE" || true
-sed -i '/lc_numeric/d' "$CONF_FILE" || true
-sed -i '/lc_time/d' "$CONF_FILE" || true
-
+# Run pre-upgrade check
 echo "🔎 Running pre-upgrade check..."
-if ! as_migrator_user "cd $TMP_WORKDIR && $NEW_BIN/pg_upgrade \
+cd /tmp
+if ! run_as_user "$NEW_BIN/pg_upgrade \
     --old-datadir=$OLD_DATA \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
-    --username=$PGUSER_NAME \
     --check"; then
     echo "❌ Pre-upgrade check failed"
-    find "$NEW_DATA/pg_upgrade_output.d" -name pg_upgrade_server.log -exec cat {} + || true
-    chmod -R a+r "$NEW_DATA/pg_upgrade_output.d" || true
     exit 1
 fi
 
 echo "✅ Check passed"
 
-echo "🚀 Starting upgrade..."
-if ! as_migrator_user "cd $TMP_WORKDIR && $NEW_BIN/pg_upgrade \
+# Run upgrade
+echo "🚀 Starting migration..."
+if ! run_as_user "$NEW_BIN/pg_upgrade \
     --old-datadir=$OLD_DATA \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
-    --username=$PGUSER_NAME \
-    --jobs=2 \
-    --verbose \
-    --copy \
-    --write-planner-stats"; then
+    --copy"; then
     echo "❌ Upgrade failed"
-    find "$NEW_DATA/pg_upgrade_output.d" -name pg_upgrade_server.log -exec cat {} + || true
-    chmod -R a+r "$NEW_DATA/pg_upgrade_output.d" || true
     exit 1
 fi
 
-chmod -R a+r "$NEW_DATA/pg_upgrade_output.d" || true
-
-echo ""
-echo "🎉 Migration complete!"
-echo "📌 New PostgreSQL $NEW_VERSION data is ready at $NEW_DATA"
-echo "🛑 Old data at $OLD_DATA remains untouched (read-only mount)"
+echo "🎉 Migration complete: $OLD_VERSION -> $NEW_VERSION"
