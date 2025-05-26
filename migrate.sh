@@ -23,7 +23,8 @@ run_as_user() {
 
 # Basic validation
 [ -d "$OLD_DATA" ] || { echo "❌ Old data not found: $OLD_DATA"; exit 1; }
-[ -d "$NEW_DATA" ] && [ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data dir must exist and be empty"; exit 1; }
+[ -d "$NEW_DATA" ] && [ -z "$(ls -A "$NEW_DATA")" ] || { echo "❌ New data dir must exist and be empty";
+ rm -rf "$NEW_DATA"; }
 
 # Set permissions and initialize
 echo "🔧 Setting permissions and initializing new cluster..."
