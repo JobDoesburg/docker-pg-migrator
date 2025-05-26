@@ -43,29 +43,13 @@ run_as_user "$NEW_BIN/initdb -D $NEW_DATA"
 echo "🧹 Cleaning stale pid file..."
 rm -f "$OLD_DATA/postmaster.pid"
 
-# Determine which database user to use for migration
-# pg_upgrade requires the original "install user" who owns the database files
-echo "🔍 Detecting original install user from old cluster..."
-run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -o '-p 50431 -k /tmp' -w start"
-INSTALL_USER=$(run_as_user "$OLD_BIN/psql -h /tmp -p 50431 -d postgres -t -c \"SELECT rolname FROM pg_roles WHERE rolsuper = true AND oid = 10;\"" | xargs)
-if [ -z "$INSTALL_USER" ]; then
-    # Fallback: get any superuser (usually the install user)
-    INSTALL_USER=$(run_as_user "$OLD_BIN/psql -h /tmp -p 50431 -d postgres -t -c \"SELECT rolname FROM pg_roles WHERE rolsuper = true LIMIT 1;\"" | xargs)
-fi
-run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -m fast stop"
-echo "👤 Found install user: $INSTALL_USER"
+# Use the provided superuser for migration
+echo "🔍 Using database superuser: $POSTGRES_USER"
 
-# Create the install user in new cluster with same privileges
-echo "👤 Ensuring install user '$INSTALL_USER' exists in new cluster..."
+# Create the user in new cluster
+echo "👤 Ensuring user '$POSTGRES_USER' exists in new cluster..."
 run_as_user "$NEW_BIN/pg_ctl -D $NEW_DATA -o '-p 50432 -k /tmp' -w start"
-run_as_user "$NEW_BIN/psql -h /tmp -p 50432 -d postgres -c \"CREATE USER \\\"$INSTALL_USER\\\" WITH SUPERUSER;\" 2>/dev/null || true"
-
-# If POSTGRES_USER was provided and is different from install user, create it too
-if [ -n "$POSTGRES_USER" ] && [ "$POSTGRES_USER" != "$INSTALL_USER" ]; then
-    echo "👤 Also creating application user '$POSTGRES_USER'..."
-    run_as_user "$NEW_BIN/psql -h /tmp -p 50432 -d postgres -c \"CREATE USER \\\"$POSTGRES_USER\\\" WITH SUPERUSER;\" 2>/dev/null || true"
-fi
-
+run_as_user "$NEW_BIN/psql -h /tmp -p 50432 -d postgres -c \"CREATE USER \\\"$POSTGRES_USER\\\" WITH SUPERUSER;\" 2>/dev/null || true"
 run_as_user "$NEW_BIN/pg_ctl -D $NEW_DATA -m fast stop"
 
 # Run pre-upgrade check
@@ -76,7 +60,7 @@ if ! run_as_user "$NEW_BIN/pg_upgrade \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
-    --username=\"$INSTALL_USER\" \
+    --username=\"$POSTGRES_USER\" \
     --check"; then
     echo "❌ Pre-upgrade check failed"
     exit 1
@@ -91,7 +75,7 @@ if ! run_as_user "$NEW_BIN/pg_upgrade \
     --new-datadir=$NEW_DATA \
     --old-bindir=$OLD_BIN \
     --new-bindir=$NEW_BIN \
-    --username=\"$INSTALL_USER\" \
+    --username=\"$POSTGRES_USER\" \
     --copy"; then
     echo "❌ Upgrade failed"
     exit 1
