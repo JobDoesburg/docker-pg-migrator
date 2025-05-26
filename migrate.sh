@@ -59,29 +59,31 @@ rm -f "$OLD_DATA/postmaster.pid" "$NEW_DATA/postmaster.pid" 2>/dev/null || true
 echo "🔍 Detecting the original install user from old cluster..."
 run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -o '-p 50431 -k /tmp' -w start"
 
-# Get the install user (usually has OID 10 or is the bootstrap superuser)
-INSTALL_USER=$(run_as_user "$OLD_BIN/psql -h /tmp -p 50431 -d postgres -t -c \"SELECT rolname FROM pg_roles WHERE oid = 10;\"" | xargs)
+# First, try to connect with the provided POSTGRES_USER to find the install user
+INSTALL_USER=""
+if [ -n "$POSTGRES_USER" ]; then
+    # Try with the provided user first
+    INSTALL_USER=$(run_as_user "$OLD_BIN/psql -h /tmp -p 50431 -U $POSTGRES_USER -d postgres -t -c \"SELECT rolname FROM pg_roles WHERE oid = 10;\"" 2>/dev/null | xargs)
 
-# If no user with OID 10, get the first superuser (likely the install user)
-if [ -z "$INSTALL_USER" ]; then
-    INSTALL_USER=$(run_as_user "$OLD_BIN/psql -h /tmp -p 50431 -d postgres -t -c \"SELECT rolname FROM pg_roles WHERE rolsuper = true ORDER BY oid LIMIT 1;\"" | xargs)
+    # If no user with OID 10, get the first superuser (likely the install user)
+    if [ -z "$INSTALL_USER" ]; then
+        INSTALL_USER=$(run_as_user "$OLD_BIN/psql -h /tmp -p 50431 -U $POSTGRES_USER -d postgres -t -c \"SELECT rolname FROM pg_roles WHERE rolsuper = true ORDER BY oid LIMIT 1;\"" 2>/dev/null | xargs)
+    fi
+fi
+
+# If we still don't have an install user, the provided user might be the install user
+if [ -z "$INSTALL_USER" ] && [ -n "$POSTGRES_USER" ]; then
+    INSTALL_USER="$POSTGRES_USER"
 fi
 
 run_as_user "$OLD_BIN/pg_ctl -D $OLD_DATA -m fast stop"
 
-echo "👤 Found install user: $INSTALL_USER"
+echo "👤 Using install user: $INSTALL_USER"
 
 # Create the install user in new cluster
 echo "👤 Ensuring install user '$INSTALL_USER' exists in new cluster..."
 run_as_user "$NEW_BIN/pg_ctl -D $NEW_DATA -o '-p 50432 -k /tmp' -w start"
 run_as_user "$NEW_BIN/psql -h /tmp -p 50432 -d postgres -c \"CREATE USER \\\"$INSTALL_USER\\\" WITH SUPERUSER;\" 2>/dev/null || true"
-
-# Also create the application user if different
-if [ -n "$POSTGRES_USER" ] && [ "$POSTGRES_USER" != "$INSTALL_USER" ]; then
-    echo "👤 Also creating application user '$POSTGRES_USER'..."
-    run_as_user "$NEW_BIN/psql -h /tmp -p 50432 -d postgres -c \"CREATE USER \\\"$POSTGRES_USER\\\" WITH SUPERUSER;\" 2>/dev/null || true"
-fi
-
 run_as_user "$NEW_BIN/pg_ctl -D $NEW_DATA -m fast stop"
 
 # Run pre-upgrade check
